@@ -152,7 +152,7 @@
                 <v-btn
                   color="blue darken-1"
                   text
-                  @click="add(filterStaff), save"
+                  @click="add(filterStaff)"
                 >
                   сохранить
                 </v-btn>

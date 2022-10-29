@@ -159,15 +159,12 @@
               </v-card-actions>
             </v-card>
           </v-dialog>
-
-
-
         <v-btn
           id="btn_delete"
           color="#FF8A80"
           elevation="2"
           :disabled="isChoosed"
-          @click="updateFireDate(choosedList)"
+          @click="updateFireDate(selected)"
         >снять с должности
         </v-btn>
       </v-card-title>
@@ -182,53 +179,65 @@
             itemsPerPageText: 'Строк на странице',
             pageText: 'С {0} по {1} из {2}'
           }"
+          v-model="selected"
           item-key="name"
           show-select
+          @toggle-select-all="selectAllToggle"
           class="elevation-1"
         >
-          <template v-slot:[`item.data-table-select`]="{ item }">
-            <v-simple-checkbox v-model="item.selected" :hidden="!(item.fireDate == null)" @click="btn_visual(item)"></v-simple-checkbox>
+
+          <template v-slot:[`item.data-table-select`]="{ item, select, isSelected }">
+            <v-simple-checkbox 
+              :value="isSelected"
+              :readonly="!(item.fireDate == null)"
+              :disabled="!(item.fireDate == null)"
+              :hidden="!(item.fireDate == null)"
+              @click="btn_visual(item, isSelected)"
+              @input="select($event)"
+            ></v-simple-checkbox>
           </template>
+
+
           <template v-slot:[`item.salary_fraction`]="{ item }">
             <div v-if="item.fireDate==null">
               <v-edit-dialog
-                  :return-value.sync="item.salary_fraction"
+                  @cancel="returnSF"
                   large
                   persistent
                   cancel-text="отменить"
                   save-text="сохранить"
                   @save="update(item)"
             >
-              <div>{{ item.salary }} ₽ ({{ item.fraction }}%)</div>
-              <template v-slot:input>
-                <div class="d-flex">
-                  <div class="d-flex flex-column">
-                  <div class="mt-3 mb-0">
-                    <p>Ставка, руб</p>
+                <div>{{ item.salary }} ₽ ({{ item.fraction }}%)</div>
+                <template v-slot:input>
+                  <div class="d-flex">
+                    <div class="d-flex flex-column">
+                    <div class="mt-3 mb-0">
+                      <p>Ставка, руб</p>
+                    </div>
+                    <v-text-field
+                      v-model="item.salary"
+                      label="Edit"
+                      single-line
+                      autofocus
+                      class="mt-0 pt-0"
+                    ></v-text-field>
+                    </div>
+                    <div class="d-flex flex-column">
+                    <div class="mt-3 ml-3 mb-0">
+                      <p>Ставка,%</p>
+                    </div>
+                    <v-text-field
+                      v-model="item.fraction"
+                      label="Edit"
+                      single-line
+                      autofocus
+                      class="mt-0 pt-0 ml-3"
+                    ></v-text-field>
                   </div>
-                  <v-text-field
-                    v-model="item.salary"
-                    label="Edit"
-                    single-line
-                    autofocus
-                    class="mt-0 pt-0"
-                  ></v-text-field>
                   </div>
-                  <div class="d-flex flex-column">
-                  <div class="mt-3 ml-3 mb-0">
-                    <p>Ставка,%</p>
-                  </div>
-                  <v-text-field
-                    v-model="item.fraction"
-                    label="Edit"
-                    single-line
-                    autofocus
-                    class="mt-0 pt-0 ml-3"
-                  ></v-text-field>
-                </div>
-                </div>
-              </template>
-            </v-edit-dialog>
+                </template>
+              </v-edit-dialog>
             </div>
             <div v-else>
               <div>{{ item.salary }} ₽ ({{ item.fraction }}%)</div>
@@ -302,6 +311,7 @@
               @click = "update(item)"
             ></v-simple-checkbox>
           </template>
+          
         </v-data-table>
       </div>
     </v-main>
@@ -318,8 +328,15 @@ export default {
 
   async mounted() {
     let staff = await this.fetchData()
+    staff.forEach(person => {person.hireDate = moment(person.hireDate).format("DD.MM.YYYY");
+    if (person.fireDate !== null) {
+      person.fireDate = moment(person.fireDate).format("DD.MM.YYYY");
+      this.disabledCount += 1
+    }
+  })
     this.filterStaff = staff
     this.allStaff = staff
+
   },
 
   methods: {
@@ -331,6 +348,37 @@ export default {
 
     close () {
       this.dialog = false
+    },
+
+    selectAllToggle(props) {
+       if(this.selected.length != this.filterStaff.length - this.disabledCount) {
+       
+         this.selected = [];
+         const self = this;
+         props.items.forEach(item => {
+           if(item.fireDate == null) {
+             self.selected.push(item);
+           } 
+         });
+       } else this.selected = [];
+
+       if (this.selected.length == 0) {
+          this.isChoosed = true
+        } else {
+          this.isChoosed = false
+        }
+       let button = document.getElementById("btn_delete")
+        if (this.selected.length > 1) {
+          button.textContent = "снять с должностей"
+        } else {
+          button.textContent = "снять с должности"
+        }  
+     },
+
+    async returnSF(){
+      let staff = await this.fetchData()
+      this.filterStaff = staff
+      this.allStaff = staff
     },
 
     changeStaff() {
@@ -356,14 +404,14 @@ export default {
     base
     advance
     byHours
-  } }`}); return response.data.data.allStaff
+  } }`
+ }); return response.data.data.allStaff
       } catch (a) {
       alert(a);
     }
   },
 
   async update(item) {
-    console.log(item)
       try {
         const response = await axios.post('http://127.0.0.1:8000/graphql/', { query: 
           `mutation updatemutation($id: ID, $salary: Int!, $fraction: Int!, $advance: Int!, $base: Int!, $byHours: Boolean!){
@@ -395,33 +443,43 @@ export default {
   async updateFireDate(list_fd) {
     for (var i = 0; i < list_fd.length; i++) {
       try {
-        const response = await axios.post('http://127.0.0.1:8000/graphql/', { query: 
-          `mutation updatefdmutation($id: ID, $fireDate: Date!){
+        // eslint-disable-next-line
+        const response = await axios.post('http://127.0.0.1:8000/graphql/', { query:
+          `mutation updatefdmutation($id: ID){
   updateFiredate(id:$id,
-    fireDate:$fireDate,
    ) {
     staff{
       id
-      fireDate
     }
   }
 }`, variables: {
-                id: Number(list_fd[i].id),
-                fireDate: moment(Date.now()).format("YYYY-MM-DD"),
-        }}); 
-        console.log(response)
+id: Number(list_fd[i].id),
+}}); let staff = await this.fetchData()
+        this.filterStaff = staff
+        this.allStaff = staff
+        staff.forEach(person => {person.hireDate = moment(person.hireDate).format("DD.MM.YYYY");
+        if (person.fireDate !== null) {
+          person.fireDate = moment(person.fireDate).format("DD.MM.YYYY");
+        }
+    
+  }) 
+        
       } catch (a) {
         alert(a);
         }
-    }
+    }  
+        this.isChoosed = true
+        this.selected = []
+        let button = document.getElementById("btn_delete")
+        button.textContent = "снять с должности"
   },
 
   async add(item) {
-    console.log(item)
     if (!item.byHours) {
       item.byHours = false
     }
       try {
+        // eslint-disable-next-line
         const response = await axios.post('http://127.0.0.1:8000/graphql/', { query: 
           `mutation addmutation($name: String!, $companyName: String!, $positionName: String!, $hireDate: Date!, $salary: Int!, $fraction: Int!, $advance: Int!, $base: Int!, $byHours: Boolean!){
   addOccupation(name:$name,
@@ -457,7 +515,6 @@ export default {
           fraction: Number(item.fraction),
           salary: Number(item.salary)
         }}); 
-        console.log(response)
         this.close()
         let staff = await this.fetchData()
         this.filterStaff = staff
@@ -469,26 +526,24 @@ export default {
 
   
 
-  btn_visual(item){
-    if (item.selected) {
-      this.choosedList.push(item)
-      console.log(this.choosedList)
+  btn_visual(item, isSelected){
+    if (!isSelected) {
+      this.selected.push(item)
     } else {
-      let i = this.choosedList.indexOf(item)
-      this.choosedList.splice(i, 1)
+      let i = this.selected.indexOf(item)
+      this.selected.splice(i, 1)
     }
-    if (this.choosedList.length == 0) {
+    if (this.selected.length == 0) {
       this.isChoosed = true
     } else {
       this.isChoosed = false
     }
     let button = document.getElementById("btn_delete")
-    if (this.choosedList.length > 1) {
+    if (this.selected.length > 1) {
       button.textContent = "снять с должностей"
     } else {
       button.textContent = "снять с должности"
     }
-   
   }
 },
 
@@ -498,10 +553,13 @@ export default {
     search: '',
     staff: [],
     checkbox1: true,
+    disabledCount: 0,
     filterStaff: [],
+    selected: [],
     isChoosed: true,
     dialog: false,
     choosedList: [],
+    singleSelect: false,
     headers: [
       {
         text: 'Сотрудник',
@@ -512,7 +570,7 @@ export default {
       { text: 'Компания', value: 'companyName', sortable: false, filterable: false,},
       { text: 'Должность', value: 'positionName', sortable: false, filterable: false, },
       { text: 'Дата приёма', value: 'hireDate', sortable: false, filterable: false, },
-      { text: 'Дата увольнения', value: 'fireDate', sortable: false, filterable: false, },
+      { text: 'Дата увольнения', value: 'fireDate', sortable: false, filterable: false},
       { text: 'Ставка', value: 'salary_fraction', sortable: false, filterable: false, },
       { text: 'База', value: 'base', sortable: false, filterable: false, },
       { text: 'Аванс', value: 'advance', sortable: false, filterable: false, },
